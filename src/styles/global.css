@@ -34,3 +34,4 @@ table{width:100%;border-collapse:collapse;font-size:15px}td,th{text-align:left;p
 summary{cursor:pointer;padding:10px 0;color:var(--soft)}
 @media(max-width:600px){.grid{grid-template-columns:1fr}.two{grid-template-columns:1fr}h1{font-size:28px}.q{font-size:22px}.bar{margin-bottom:32px}.lab{font-size:17px}}
 @media print{:root{--bg:#fff;--panel:#fff;--line:#ccc;--ink:#000;--soft:#333;--mute:#555;color-scheme:light}body{font-size:12px}.noprint{display:none!important}main.wide{max-width:none;padding:0}.career,.panel,svg{break-inside:avoid}.ring{stroke:#bbb}.dot{stroke:#fff}svg{max-width:380px}h2{margin-top:22px;break-after:avoid}a{color:#000}}
+.opt small{display:block;color:var(--mute);font-size:14px;margin-top:2px}

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ABILITY, ABILS, abilityPath, buildFlow, PAIRS, VALUES, type Answers } from '../src/lib/questions.ts';
+import { ABILITY, ABILS, abilityPath, buildFlow, INTEREST, IPIP, PAIRS, VALUES, type Answers, type Ria } from '../src/lib/questions.ts';
+import { INTEREST_EG, IPIP_EG } from '../src/lib/examples.ts';
 import { CAREERS } from '../src/lib/careers.ts';
 import { score } from '../src/lib/score.ts';
 import { markdown } from '../src/lib/report.ts';
@@ -20,6 +21,12 @@ function run(p: P) {
 }
 test('each value appears three times', () => VALUES.forEach((_, i) => assert.equal(PAIRS.flat().filter(x => x === i).length, 3)));
 test('career data is complete', () => CAREERS.forEach(c => { assert.equal(c.ria.length, 6, c.n); assert.ok(c.ria.every(x => x >= 0)); c.val.forEach(v => assert.ok(VALUES.some(x => x[0] === v), c.n + v)); }));
+test('every short item has an example', () => {
+  const { a } = run(cases[0][1]);
+  buildFlow(a).filter(q => /^(int_|ip\d|ev_)/.test(q.id)).forEach(q => assert.ok(q.eg, q.id));
+  Object.entries(INTEREST).forEach(([k, x]) => assert.equal(INTEREST_EG[k as Ria].length, x.length));
+  assert.equal(IPIP_EG.length, IPIP.length);
+});
 test('skill tasks adapt', () => {
   assert.deepEqual(abilityPath('num', {}), ['L3']);
   assert.deepEqual(abilityPath('num', { ab_num_L3: '1', ab_num_L4: '0' }), ['L3', 'L4', 'L5']);

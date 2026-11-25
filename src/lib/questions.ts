@@ -1,8 +1,9 @@
 // Question bank and the branching rules that decide what is asked next.
+import { DOMAIN_EG, EVIDENCE_EG, INTEREST_EG, IPIP_EG, OPT_EG, QUESTION_EG, VALUE_EG } from './examples.ts';
 export type Answers = Record<string, any>;
-export type Opt = { v: string; t: string };
+export type Opt = { v: string; t: string; d?: string };
 export type Q = {
-  id: string; section: string; kind: 'text' | 'email' | 'number' | 'single' | 'multi' | 'scale' | 'long';
+  id: string; section: string; eg?: string; kind: 'text' | 'email' | 'number' | 'single' | 'multi' | 'scale' | 'long';
   text: string; hint?: string; opts?: Opt[]; optional?: boolean; max?: number; scale?: 'like' | 'true'; min?: number; top?: number;
 };
 export const RIASEC = ['R', 'I', 'A', 'S', 'E', 'C'] as const;
@@ -37,7 +38,7 @@ export const EVIDENCE: [string, string][] = [
 ];
 export const VALUES: [string, string][] = [['money', 'High income'], ['stable', 'Job security'], ['free', 'Freedom over how I work'], ['impact', 'Helping people or society'], ['create', 'Making original things'], ['status', 'Recognition and influence'], ['life', 'Time for life outside work'], ['learn', 'Always learning something hard']];
 export const PAIRS = [[0, 1], [2, 3], [4, 5], [6, 7], [1, 2], [5, 6], [3, 4], [7, 0], [0, 4], [1, 5], [2, 6], [3, 7]];
-export const DOMAINS: Opt[] = [['tech', 'Software & AI'], ['data', 'Data & maths'], ['security', 'Security & defence'], ['health', 'Medicine & health'], ['mind', 'Mind & behaviour'], ['science', 'Science & research'], ['eng', 'Engineering & machines'], ['energy', 'Energy & climate'], ['build', 'Buildings & trades'], ['design', 'Design'], ['media', 'Media & content'], ['biz', 'Business & startups'], ['money', 'Money & finance'], ['law', 'Law & policy'], ['edu', 'Education'], ['public', 'Government & community'], ['nature', 'Farming, food & nature'], ['body', 'Sport, travel & hospitality']].map(([v, t]) => ({ v, t }));
+export const DOMAINS: Opt[] = [['tech', 'Software & AI'], ['data', 'Data & maths'], ['security', 'Security & defence'], ['health', 'Medicine & health'], ['mind', 'Mind & behaviour'], ['science', 'Science & research'], ['eng', 'Engineering & machines'], ['energy', 'Energy & climate'], ['build', 'Buildings & trades'], ['design', 'Design'], ['media', 'Media & content'], ['biz', 'Business & startups'], ['money', 'Money & finance'], ['law', 'Law & policy'], ['edu', 'Education'], ['public', 'Government & community'], ['nature', 'Farming, food & nature'], ['body', 'Sport, travel & hospitality']].map(([v, t]) => ({ v, t, d: DOMAIN_EG[v] }));
 
 export type Task = { q: string; o: string[]; a: number };
 type Level = 'L1' | 'L2' | 'L3' | 'L3b' | 'L4' | 'L5';
@@ -90,7 +91,7 @@ const o = (...p: string[]): Opt[] => p.map(x => { const [v, t] = x.split('|'); r
 
 /** Rebuilt after every answer, so earlier choices change what comes next. */
 export function buildFlow(a: Answers): Q[] {
-  const q: Q[] = [], add = (x: Q) => q.push(x);
+  const q: Q[] = [], add = (x: Q) => q.push({ ...x, eg: x.eg ?? QUESTION_EG[x.id], opts: x.opts?.map(y => ({ ...y, d: y.d ?? OPT_EG[x.id]?.[y.v] })) });
   const S1 = 'About you', S2 = 'What you like', S3 = 'How you work', S4 = 'What you can do', S5 = 'What you have done', S6 = 'What matters', S7 = 'Real life';
   add({ id: 'name', section: S1, kind: 'text', text: 'What is your name?' });
   add({ id: 'email', section: S1, kind: 'email', text: 'Your email?', hint: 'Only printed on your report. Nothing is sent anywhere.' });
@@ -104,14 +105,14 @@ export function buildFlow(a: Answers): Q[] {
   }
   if (a.jobfeel === 'wrong') add({ id: 'jobwhy', section: S1, kind: 'multi', max: 2, text: 'What drains you most about it?', opts: o('people|Too much dealing with people', 'alone|Too much time alone', 'repeat|Repetitive', 'pressure|Pressure and targets', 'mean|Feels pointless', 'notmine|Not good at it') });
   RIASEC.flatMap(r => [0, 1, 2].map(i => [r, i] as const)).sort((x, y) => x[1] - y[1])
-    .forEach(([r, i]) => add({ id: `int_${r}${i}`, section: S2, kind: 'scale', scale: 'like', text: INTEREST[r][i], hint: 'Would you enjoy this? Ignore pay and whether you are good at it.' }));
-  topThree(a).forEach(r => [3, 4, 5, 6].forEach(i => add({ id: `int_${r}${i}`, section: S2, kind: 'scale', scale: 'like', text: INTEREST[r][i], hint: `Going deeper: ${RIA_NAME[r].toLowerCase()} scored high for you.` })));
-  IPIP.forEach((x, i) => add({ id: `ip${i}`, section: S3, kind: 'scale', scale: 'true', text: x[0], hint: 'As you are now, not as you want to be.' }));
+    .forEach(([r, i]) => add({ id: `int_${r}${i}`, section: S2, kind: 'scale', scale: 'like', text: INTEREST[r][i], eg: INTEREST_EG[r][i], hint: 'Would you enjoy this? Ignore pay and whether you are good at it.' }));
+  topThree(a).forEach(r => [3, 4, 5, 6].forEach(i => add({ id: `int_${r}${i}`, section: S2, kind: 'scale', scale: 'like', text: INTEREST[r][i], eg: INTEREST_EG[r][i], hint: `Going deeper: ${RIA_NAME[r].toLowerCase()} scored high for you.` })));
+  IPIP.forEach((x, i) => add({ id: `ip${i}`, section: S3, kind: 'scale', scale: 'true', text: x[0], eg: IPIP_EG[i], hint: 'As you are now, not as you want to be.' }));
   ABILS.forEach(ar => abilityPath(ar, a).forEach(l => { const t = ABILITY[ar].items[l]; add({ id: `ab_${ar}_${l}`, section: S4, kind: 'single', text: t.q, hint: `${ABILITY[ar].name}. No calculator or AI. Difficulty follows your answers.`, opts: t.o.map((x, i) => ({ v: String(i), t: x })) }); }));
-  EVIDENCE.forEach(([id, t]) => add({ id: `ev_${id}`, section: S5, kind: 'single', text: t, hint: 'In the last two years, what is the most you have actually done?', opts: o('0|Nothing yet', '1|Tried it or learned basics', '2|Finished something real', '3|Others used it or relied on it', '4|Got paid, selected or won for it') }));
+  EVIDENCE.forEach(([id, t]) => add({ id: `ev_${id}`, section: S5, kind: 'single', text: t, eg: EVIDENCE_EG[id], hint: 'In the last two years, what is the most you have actually done?', opts: o('0|Nothing yet', '1|Tried it or learned basics', '2|Finished something real', '3|Others used it or relied on it', '4|Got paid, selected or won for it') }));
   add({ id: 'asked', section: S5, kind: 'long', optional: true, text: 'What do people often ask you for help with?' });
   add({ id: 'flow', section: S5, kind: 'long', optional: true, text: 'When did you last lose track of time? What were you doing?' });
-  PAIRS.forEach(([x, y], i) => add({ id: `vp${i}`, section: S6, kind: 'single', text: 'If you could only have one…', opts: [x, y].map(k => ({ v: VALUES[k][0], t: VALUES[k][1] })) }));
+  PAIRS.forEach(([x, y], i) => add({ id: `vp${i}`, section: S6, kind: 'single', text: 'If you could only have one…', opts: [x, y].map(k => ({ v: VALUES[k][0], t: VALUES[k][1], d: VALUE_EG[VALUES[k][0]] })) }));
   add({ id: 'domains', section: S7, kind: 'multi', max: 3, text: 'Which worlds pull you? Pick up to 3.', opts: DOMAINS });
   if (a.domains?.includes('health')) add({ id: 'blood', section: S7, kind: 'single', text: 'Blood, hospitals and people in pain:', opts: o('ok|I can handle it', 'learn|I could get used to it', 'no|No, not for me') });
   if (a.domains?.some((d: string) => ['tech', 'data', 'security'].includes(d))) add({ id: 'screen', section: S7, kind: 'single', text: 'Eight hours at a screen fixing something that will not work:', opts: o('ok|I get absorbed', 'learn|Fine in small doses', 'no|I would hate it') });

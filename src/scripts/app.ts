@@ -43,11 +43,11 @@ function ask(id: string) {
   const q = f[i]; at = q.id; save(); app.className = '';
   const opts = q.kind === 'scale' ? (q.scale === 'like' ? LIKE : TRUE) : q.opts, multi = q.kind === 'multi';
   const on = (v: string) => multi ? (a[q.id] ?? []).includes(v) : String(a[q.id]) === v;
-  const field = opts ? `<div class="opts ${multi && opts.length > 6 ? 'two' : ''}" role="${multi ? 'group' : 'radiogroup'}" aria-labelledby="q">${opts.map(o => `<button class="opt" role="${multi ? 'checkbox' : 'radio'}" data-v="${o.v}" aria-checked="${on(o.v)}">${esc(o.t)}</button>`).join('')}</div>`
+  const field = opts ? `<div class="opts ${multi && opts.length > 6 ? 'two' : ''}" role="${multi ? 'group' : 'radiogroup'}" aria-labelledby="q">${opts.map(o => `<button class="opt" role="${multi ? 'checkbox' : 'radio'}" data-v="${o.v}" aria-checked="${on(o.v)}">${esc(o.t)}${o.d ? `<small>${esc(o.d)}</small>` : ''}</button>`).join('')}</div>`
     : q.kind === 'long' ? `<textarea id="in" aria-labelledby="q" maxlength="1000">${esc(a[q.id])}</textarea>`
     : `<input id="in" aria-labelledby="q" type="${q.kind}" ${q.kind === 'number' ? 'inputmode="numeric"' : ''} maxlength="120" autocomplete="${q.id === 'name' ? 'name' : q.id === 'email' ? 'email' : 'off'}" value="${esc(a[q.id])}">`;
   app.innerHTML = `<div class="top"><span>${q.section}</span><span>${i + 1} / ${f.length}</span></div><div class="bar"><i style="width:${(i / f.length) * 100}%"></i></div>
-  <h2 class="q" id="q" tabindex="-1" style="margin-top:0">${esc(q.text)}</h2>${q.hint ? `<p class="mute">${esc(q.hint)}</p>` : ''}${field}<p class="err" role="alert"></p>
+  <h2 class="q" id="q" tabindex="-1" style="margin-top:0">${esc(q.text)}</h2>${q.eg ? `<p class="soft">Example: ${esc(q.eg)}</p>` : ''}${q.hint ? `<p class="mute">${esc(q.hint)}</p>` : ''}${field}<p class="err" role="alert"></p>
   <div class="row">${i ? '<button class="btn ghost" id="back">Back</button>' : ''}<button class="btn" id="next">${q.optional && !a[q.id]?.length ? 'Skip / next' : 'Next'}</button>${f.every(x => !check(x)) ? '<button class="btn ghost" id="rep">See report</button>' : ''}</div>`;
   const inp = app.querySelector<HTMLInputElement>('#in');
   if (inp) { inp.focus(); inp.oninput = () => { a[q.id] = inp.value.trim(); save(); }; inp.onkeydown = e => { if (e.key === 'Enter' && q.kind !== 'long') next(q); }; }
