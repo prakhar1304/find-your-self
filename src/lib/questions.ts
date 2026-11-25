@@ -89,10 +89,19 @@ export function topThree(a: Answers): Ria[] {
 }
 const o = (...p: string[]): Opt[] => p.map(x => { const [v, t] = x.split('|'); return { v, t }; });
 
+export const SECTIONS: { name: string; about: string; mins: string; total: number }[] = [
+  { name: 'About you', about: 'Name, email and where you are now', mins: '1 min', total: 5 },
+  { name: 'What you like', about: 'Activities you would enjoy or hate', mins: '4 min', total: 30 },
+  { name: 'How you work', about: 'Your natural style', mins: '2 min', total: 20 },
+  { name: 'What you can do', about: 'Short number, word, logic and spatial tasks', mins: '6 min', total: 12 },
+  { name: 'What you have done', about: 'Real things you have tried or finished', mins: '2 min', total: 11 },
+  { name: 'What matters', about: 'Choose between two good things', mins: '1 min', total: 12 },
+  { name: 'Real life', about: 'Fields, limits and study time', mins: '2 min', total: 6 },
+];
 /** Rebuilt after every answer, so earlier choices change what comes next. */
 export function buildFlow(a: Answers): Q[] {
   const q: Q[] = [], add = (x: Q) => q.push({ ...x, eg: x.eg ?? QUESTION_EG[x.id], opts: x.opts?.map(y => ({ ...y, d: y.d ?? OPT_EG[x.id]?.[y.v] })) });
-  const S1 = 'About you', S2 = 'What you like', S3 = 'How you work', S4 = 'What you can do', S5 = 'What you have done', S6 = 'What matters', S7 = 'Real life';
+  const [S1, S2, S3, S4, S5, S6, S7] = SECTIONS.map(s => s.name);
   add({ id: 'name', section: S1, kind: 'text', text: 'What is your name?' });
   add({ id: 'email', section: S1, kind: 'email', text: 'Your email?', hint: 'Only printed on your report. Nothing is sent anywhere.' });
   add({ id: 'age', section: S1, kind: 'number', text: 'How old are you?', min: 12, top: 80 });
@@ -106,7 +115,7 @@ export function buildFlow(a: Answers): Q[] {
   if (a.jobfeel === 'wrong') add({ id: 'jobwhy', section: S1, kind: 'multi', max: 2, text: 'What drains you most about it?', opts: o('people|Too much dealing with people', 'alone|Too much time alone', 'repeat|Repetitive', 'pressure|Pressure and targets', 'mean|Feels pointless', 'notmine|Not good at it') });
   RIASEC.flatMap(r => [0, 1, 2].map(i => [r, i] as const)).sort((x, y) => x[1] - y[1])
     .forEach(([r, i]) => add({ id: `int_${r}${i}`, section: S2, kind: 'scale', scale: 'like', text: INTEREST[r][i], eg: INTEREST_EG[r][i], hint: 'Would you enjoy this? Ignore pay and whether you are good at it.' }));
-  topThree(a).forEach(r => [3, 4, 5, 6].forEach(i => add({ id: `int_${r}${i}`, section: S2, kind: 'scale', scale: 'like', text: INTEREST[r][i], eg: INTEREST_EG[r][i], hint: `Going deeper: ${RIA_NAME[r].toLowerCase()} scored high for you.` })));
+  if (RIASEC.every(r => [0, 1, 2].every(i => a[`int_${r}${i}`] !== undefined))) topThree(a).forEach(r => [3, 4, 5, 6].forEach(i => add({ id: `int_${r}${i}`, section: S2, kind: 'scale', scale: 'like', text: INTEREST[r][i], eg: INTEREST_EG[r][i], hint: `Going deeper: ${RIA_NAME[r].toLowerCase()} scored high for you.` })));
   IPIP.forEach((x, i) => add({ id: `ip${i}`, section: S3, kind: 'scale', scale: 'true', text: x[0], eg: IPIP_EG[i], hint: 'As you are now, not as you want to be.' }));
   ABILS.forEach(ar => abilityPath(ar, a).forEach(l => { const t = ABILITY[ar].items[l]; add({ id: `ab_${ar}_${l}`, section: S4, kind: 'single', text: t.q, hint: `${ABILITY[ar].name}. No calculator or AI. Difficulty follows your answers.`, opts: t.o.map((x, i) => ({ v: String(i), t: x })) }); }));
   EVIDENCE.forEach(([id, t]) => add({ id: `ev_${id}`, section: S5, kind: 'single', text: t, eg: EVIDENCE_EG[id], hint: 'In the last two years, what is the most you have actually done?', opts: o('0|Nothing yet', '1|Tried it or learned basics', '2|Finished something real', '3|Others used it or relied on it', '4|Got paid, selected or won for it') }));

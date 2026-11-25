@@ -1,28 +1,79 @@
-import { buildFlow, RIA_NAME, type Answers, type Opt, type Q, type Ria } from '../lib/questions.ts';
+import { buildFlow, RIA_NAME, SECTIONS, type Answers, type Opt, type Q, type Ria } from '../lib/questions.ts';
 import { score } from '../lib/score.ts';
 import { SOURCES } from '../lib/careers.ts';
 import { answerText, axisData, BIG, markdown, radar, riaData, valRank } from '../lib/report.ts';
 
 const app = document.getElementById('app')!, KEY = 'find-yourself-v1';
-let a: Answers = {}, at = '';
-try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s) { a = s.a; at = s.at; } } catch {}
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ a, at })); } catch {} };
+let a: Answers = {}, at = '', stored = true;
+try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s) { a = s.a; at = s.at; } } catch { stored = false; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ a, at })); stored = true; } catch { stored = false; } };
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const LIKE: Opt[] = ['Strongly dislike', 'Dislike', 'Not sure', 'Like', 'Strongly like'].map((t, i) => ({ v: String(i + 1), t }));
 const TRUE: Opt[] = ['Not me at all', 'Mostly not me', 'In between', 'Mostly me', 'Exactly me'].map((t, i) => ({ v: String(i + 1), t }));
+const on = (id: string, f: () => void) => { const e = app.querySelector<HTMLElement>('#' + id); if (e) e.onclick = f; };
+const dl = (name: string, body: string, type: string) => { const l = document.createElement('a'); l.href = URL.createObjectURL(new Blob([body], { type })); l.download = name; l.click(); setTimeout(() => URL.revokeObjectURL(l.href), 2000); };
 
-function start() {
-  app.className = '';
-  const resume = Object.keys(a).length > 0;
-  app.innerHTML = `<h1>Find out what you are built to do</h1>
-  <p class="soft">About 100 quick taps, 12–18 minutes. Your answers decide what is asked next. At the end you get your stats, your best and worst career fits, and a file you can give to your own AI.</p>
-  <p class="soft">Answer as you are, not as you should be. There is no pass mark.</p>
-  <p class="mute">Nothing is uploaded. Your name, email and answers stay in this browser.</p>
-  <div class="row" style="margin-top:28px"><button class="btn" id="go">${resume ? 'Continue' : 'Start'}</button>${resume ? '<button class="btn ghost" id="new">Start over</button>' : ''}</div>`;
-  app.querySelector<HTMLElement>('#go')!.onclick = () => at === 'report' ? report() : ask(at || 'name');
-  const n = app.querySelector<HTMLElement>('#new'); if (n) n.onclick = reset;
+// One history entry per screen, so the phone's back button goes back one step instead of leaving.
+type View = 'home' | 'report' | `q:${string}` | `done:${string}`;
+let note = '';
+function go(v: View, push = true) {
+  if (push) history.pushState(v, ''); else history.replaceState(v, '');
+  render(v);
 }
-function reset() { if (!confirm('Delete your answers and start over?')) return; a = {}; at = ''; try { localStorage.removeItem(KEY); } catch {} start(); }
+function render(v: View) {
+  if (v === 'report' && !buildFlow(a).some(check)) return report();
+  if (v.startsWith('q:')) return ask(v.slice(2));
+  if (v.startsWith('done:')) return done(v.slice(5));
+  home();
+}
+addEventListener('popstate', e => render(e.state ?? 'home'));
+
+function status(name: string) {
+  const qs = buildFlow(a).filter(q => q.section === name), ok = qs.filter(q => !q.optional && !check(q)).length;
+  const total = Math.max(SECTIONS.find(s => s.name === name)!.total, qs.length), done = !qs.some(check);
+  return { qs, done, started: qs.some(q => a[q.id] !== undefined), pct: done ? 100 : Math.min(99, Math.round((ok / total) * 100)), total };
+}
+function open(name: string) { const { qs } = status(name); go(`q:${(qs.find(q => !!check(q)) ?? qs[0]).id}`); }
+function home() {
+  app.className = '';
+  const st = SECTIONS.map(s => ({ ...s, ...status(s.name) })), started = st.some(s => s.started), nextUp = st.find(s => !s.done), n = st.filter(s => s.done).length;
+  app.innerHTML = `<h1>${started && a.name ? `Welcome back, ${esc(a.name)}` : 'Find out what you are built to do'}</h1>
+  ${started ? `<p class="soft">${n} of ${st.length} sections done.${nextUp ? '' : ' Your report is ready.'}</p>` : `<p class="soft">Seven short sections, about 18 minutes in total. Stop any time and come back. At the end you get your stats, the careers that fit, and a file for your own AI.</p>
+  <p class="soft">Answer as you are, not as you should be. There is no pass mark.</p>`}
+  <div class="row" style="margin:24px 0 8px"><button class="btn" id="go">${!nextUp ? 'See my report' : started ? `Continue: ${nextUp.name}` : 'Start'}</button></div>
+  <p class="mute" id="note" role="status">${esc(note)}</p>
+  <div class="secs">${st.map((s, i) => `<button class="opt sec" data-s="${s.name}"><span class="n">${s.done ? '✓' : i + 1}</span><span class="t">${s.name}<small>${s.about}</small></span><span class="m">${s.done ? 'Done' : s.started ? `${s.pct}%` : s.mins}</span></button>`).join('')}</div>
+  <p class="mute">${stored ? 'Your draft saves by itself on this device after every answer. Nothing is uploaded.' : 'This browser is blocking saved drafts. Download your draft before you close this page.'}</p>
+  <div class="row">${started ? '<button class="btn ghost" id="dd">Download draft</button>' : ''}<button class="btn ghost" id="ld">Open a draft file</button>${started ? '<button class="btn ghost" id="new">Start over</button>' : ''}</div>
+  <input type="file" id="file" accept=".json,application/json" hidden>`;
+  note = '';
+  on('go', () => nextUp ? open(nextUp.name) : go('report'));
+  app.querySelectorAll<HTMLElement>('.sec').forEach(b => b.onclick = () => open(b.dataset.s!));
+  on('dd', () => dl('career-draft.json', JSON.stringify({ draft: 1, answers: a }), 'application/json'));
+  const file = app.querySelector<HTMLInputElement>('#file')!; on('ld', () => file.click());
+  file.onchange = async () => {
+    try {
+      const d = JSON.parse(await file.files![0].text()).answers;
+      if (!d || typeof d !== 'object' || Array.isArray(d)) throw 0;
+      if (started && !confirm('Replace the answers on this device with this draft?')) return;
+      a = d; at = ''; save(); note = 'Draft opened.';
+    } catch { note = 'That file is not a draft from this site.'; }
+    home();
+  };
+  on('new', reset); scrollTo(0, 0);
+}
+function done(name: string) {
+  app.className = '';
+  const i = SECTIONS.findIndex(s => s.name === name), st = SECTIONS.map(s => ({ ...s, ...status(s.name) })), n = st.filter(s => s.done).length;
+  const up = st.slice(i + 1).find(s => !s.done) ?? st.find(s => !s.done);
+  app.innerHTML = `<p class="mute">${n} of ${st.length} sections done</p><div class="bar"><i style="width:${(n / st.length) * 100}%"></i></div>
+  <h1 tabindex="-1">${esc(name)}: done</h1><p class="soft">${up ? `Next is ${up.name}. ${up.about}, about ${up.mins}.` : 'That was the last one. Your report is ready.'}</p>
+  <div class="row" style="margin-top:24px"><button class="btn" id="go">${up ? `Start ${up.name}` : 'See my report'}</button>${up ? '<button class="btn ghost" id="exit">Save and finish later</button>' : ''}</div>`;
+  app.querySelector('h1')!.focus();
+  on('go', () => up ? open(up.name) : go('report')); on('exit', exit); scrollTo(0, 0);
+}
+function exit() { save(); note = stored ? 'Draft saved on this device. Come back to this page to continue.' : ''; go('home'); }
+function reset() { if (!confirm('Delete your answers and start over?')) return; a = {}; at = ''; try { localStorage.removeItem(KEY); } catch {} go('home'); }
 
 function check(q: Q): string {
   const v = a[q.id], empty = v === undefined || v === '' || (Array.isArray(v) && !v.length);
@@ -33,42 +84,47 @@ function check(q: Q): string {
 }
 function next(q: Q) {
   const e = check(q); if (e) { app.querySelector('.err')!.textContent = e; return; }
-  const f = buildFlow(a), i = f.findIndex(x => x.id === q.id);
-  if (i + 1 < f.length) return ask(f[i + 1].id);
-  const miss = f.find(check); if (miss) return ask(miss.id); // going back can open new questions
-  report();
+  const f = status(q.section).qs, i = f.findIndex(x => x.id === q.id);
+  const to = f[i + 1] ?? f.find(check); // going back can open new questions
+  go(to ? `q:${to.id}` : `done:${q.section}`);
 }
 function ask(id: string) {
-  const f = buildFlow(a); let i = f.findIndex(x => x.id === id); if (i < 0) i = Math.max(0, f.findIndex(x => !!check(x)));
-  const q = f[i]; at = q.id; save(); app.className = '';
+  const q = buildFlow(a).find(x => x.id === id); if (!q) return home();
+  const { qs: f, total } = status(q.section), i = f.indexOf(f.find(x => x.id === id)!), sn = SECTIONS.findIndex(s => s.name === q.section) + 1;
+  at = q.id; save(); app.className = '';
   const opts = q.kind === 'scale' ? (q.scale === 'like' ? LIKE : TRUE) : q.opts, multi = q.kind === 'multi';
   const on = (v: string) => multi ? (a[q.id] ?? []).includes(v) : String(a[q.id]) === v;
   const field = opts ? `<div class="opts ${multi && opts.length > 6 ? 'two' : ''}" role="${multi ? 'group' : 'radiogroup'}" aria-labelledby="q">${opts.map(o => `<button class="opt" role="${multi ? 'checkbox' : 'radio'}" data-v="${o.v}" aria-checked="${on(o.v)}">${esc(o.t)}${o.d ? `<small>${esc(o.d)}</small>` : ''}</button>`).join('')}</div>`
     : q.kind === 'long' ? `<textarea id="in" aria-labelledby="q" maxlength="1000">${esc(a[q.id])}</textarea>`
     : `<input id="in" aria-labelledby="q" type="${q.kind}" ${q.kind === 'number' ? 'inputmode="numeric"' : ''} maxlength="120" autocomplete="${q.id === 'name' ? 'name' : q.id === 'email' ? 'email' : 'off'}" value="${esc(a[q.id])}">`;
-  app.innerHTML = `<div class="top"><span>${q.section}</span><span>${i + 1} / ${f.length}</span></div><div class="bar"><i style="width:${(i / f.length) * 100}%"></i></div>
+  app.innerHTML = `<div class="top"><span>Section ${sn} of ${SECTIONS.length}: ${q.section}</span><span>${i + 1} / ${total}</span></div><div class="bar"><i style="width:${(i / total) * 100}%"></i></div>
   <h2 class="q" id="q" tabindex="-1" style="margin-top:0">${esc(q.text)}</h2>${q.eg ? `<p class="soft">Example: ${esc(q.eg)}</p>` : ''}${q.hint ? `<p class="mute">${esc(q.hint)}</p>` : ''}${field}<p class="err" role="alert"></p>
-  <div class="row">${i ? '<button class="btn ghost" id="back">Back</button>' : ''}<button class="btn" id="next">${q.optional && !a[q.id]?.length ? 'Skip / next' : 'Next'}</button>${f.every(x => !check(x)) ? '<button class="btn ghost" id="rep">See report</button>' : ''}</div>`;
+  <div class="row">${i ? '<button class="btn ghost" id="back">Back</button>' : ''}<button class="btn" id="next">${q.optional && !a[q.id]?.length ? 'Skip / next' : 'Next'}</button><button class="btn ghost" id="exit">Save and exit</button></div>`;
   const inp = app.querySelector<HTMLInputElement>('#in');
   if (inp) { inp.focus(); inp.oninput = () => { a[q.id] = inp.value.trim(); save(); }; inp.onkeydown = e => { if (e.key === 'Enter' && q.kind !== 'long') next(q); }; }
   else app.querySelector<HTMLElement>('#q')!.focus({ preventScroll: true });
   app.querySelectorAll<HTMLButtonElement>('.opt').forEach(b => b.onclick = () => {
     const v = b.dataset.v!;
-    if (!multi) { a[q.id] = v; save(); return next(q); }
+    if (!multi) {
+      if (app.dataset.busy) return; // a double tap must not answer the next question
+      a[q.id] = v; save(); app.dataset.busy = '1';
+      app.querySelectorAll('.opt').forEach(x => x.setAttribute('aria-checked', String(x === b)));
+      setTimeout(() => { delete app.dataset.busy; if (b.isConnected) next(q); }, 180);
+      return;
+    }
     const cur: string[] = a[q.id] ?? [];
     if (!cur.includes(v) && cur.length >= q.max!) { app.querySelector('.err')!.textContent = `Pick up to ${q.max}.`; return; }
     a[q.id] = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v]; save();
     b.setAttribute('aria-checked', String(a[q.id].includes(v))); app.querySelector('.err')!.textContent = '';
   });
   app.querySelector<HTMLElement>('#next')!.onclick = () => next(q);
-  const rp = app.querySelector<HTMLElement>('#rep'); if (rp) rp.onclick = () => { const miss = buildFlow(a).find(check); miss ? ask(miss.id) : report(); };
-  const bk = app.querySelector<HTMLElement>('#back'); if (bk) bk.onclick = () => ask(f[i - 1].id);
+  on('back', () => go(`q:${f[i - 1].id}`)); on('exit', exit);
   scrollTo(0, 0);
 }
 // Number keys pick an option.
 addEventListener('keydown', e => {
   if (/INPUT|TEXTAREA/.test((e.target as HTMLElement).tagName) || e.metaKey || e.ctrlKey || e.repeat) return;
-  const b = app.querySelectorAll<HTMLButtonElement>('.opt'); if (b.length && +e.key >= 1 && +e.key <= b.length) b[+e.key - 1].click();
+  const b = app.querySelectorAll<HTMLButtonElement>('.opt[role]'); if (b.length && +e.key >= 1 && +e.key <= b.length) b[+e.key - 1].click();
 });
 
 const OUT = { growing: '▲ Growing', steady: '● Steady', squeezed: '▼ Shrinking or squeezed' }, AI = { helps: 'AI mostly helps', mixed: 'AI changes the tasks', pressure: 'AI replaces routine parts' };
@@ -100,8 +156,7 @@ function report() {
   <details class="noprint"><summary>All career scores</summary>${tbl(r.matches.map(m => [m.career.n, m.score]))}</details>
   <details class="noprint"><summary>All your answers</summary>${tbl(answerText(a).map(x => [x.q, x.a]))}</details>
   <div class="row noprint" style="margin-top:24px"><button class="btn ghost" id="edit">Change answers</button><button class="btn ghost" id="new">Start over</button></div>`;
-  const on = (id: string, f: () => void) => app.querySelector<HTMLElement>('#' + id)!.onclick = f, msg = (t: string) => app.querySelector('#msg')!.textContent = t;
-  const dl = (name: string, body: string, type: string) => { const l = document.createElement('a'); l.href = URL.createObjectURL(new Blob([body], { type })); l.download = name; l.click(); setTimeout(() => URL.revokeObjectURL(l.href), 2000); };
+  const msg = (t: string) => app.querySelector('#msg')!.textContent = t;
   on('copy', async () => { try { await navigator.clipboard.writeText(md); msg('Copied. Paste it into ChatGPT, Claude or Gemini.'); } catch {
     let t = app.querySelector<HTMLTextAreaElement>('#raw');
     if (!t) { t = document.createElement('textarea'); t.id = 'raw'; t.className = 'noprint'; t.readOnly = true; t.setAttribute('aria-label', 'Report text'); t.value = md; app.querySelector('#msg')!.after(t); }
@@ -110,7 +165,7 @@ function report() {
   } });
   on('md', () => dl('career-report.md', md, 'text/markdown'));
   on('json', () => dl('career-report.json', JSON.stringify({ date: new Date().toISOString(), answers: a, stats: r.axes, interests: r.interest, personality: r.big, values: r.val, reliability: r.quality, careers: r.matches.map(m => ({ name: m.career.n, fit: m.score, ...m.parts, outlook: m.career.out, why: m.why, warnings: m.warn })) }, null, 2), 'application/json'));
-  on('pdf', () => print()); on('edit', () => ask('name')); on('new', reset);
+  on('pdf', () => print()); on('edit', () => go('home')); on('new', reset);
   scrollTo(0, 0);
 }
-start();
+go(at === 'report' ? 'report' : 'home', false);
