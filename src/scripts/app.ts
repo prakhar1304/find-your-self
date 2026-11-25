@@ -48,7 +48,7 @@ function ask(id: string) {
     : `<input id="in" aria-labelledby="q" type="${q.kind}" ${q.kind === 'number' ? 'inputmode="numeric"' : ''} maxlength="120" autocomplete="${q.id === 'name' ? 'name' : q.id === 'email' ? 'email' : 'off'}" value="${esc(a[q.id])}">`;
   app.innerHTML = `<div class="top"><span>${q.section}</span><span>${i + 1} / ${f.length}</span></div><div class="bar"><i style="width:${(i / f.length) * 100}%"></i></div>
   <h2 class="q" id="q" tabindex="-1" style="margin-top:0">${esc(q.text)}</h2>${q.hint ? `<p class="mute">${esc(q.hint)}</p>` : ''}${field}<p class="err" role="alert"></p>
-  <div class="row">${i ? '<button class="btn ghost" id="back">Back</button>' : ''}<button class="btn" id="next">${q.optional && !a[q.id]?.length ? 'Skip / next' : 'Next'}</button></div>`;
+  <div class="row">${i ? '<button class="btn ghost" id="back">Back</button>' : ''}<button class="btn" id="next">${q.optional && !a[q.id]?.length ? 'Skip / next' : 'Next'}</button>${f.every(x => !check(x)) ? '<button class="btn ghost" id="rep">See report</button>' : ''}</div>`;
   const inp = app.querySelector<HTMLInputElement>('#in');
   if (inp) { inp.focus(); inp.oninput = () => { a[q.id] = inp.value.trim(); save(); }; inp.onkeydown = e => { if (e.key === 'Enter' && q.kind !== 'long') next(q); }; }
   else app.querySelector<HTMLElement>('#q')!.focus({ preventScroll: true });
@@ -61,6 +61,7 @@ function ask(id: string) {
     b.setAttribute('aria-checked', String(a[q.id].includes(v))); app.querySelector('.err')!.textContent = '';
   });
   app.querySelector<HTMLElement>('#next')!.onclick = () => next(q);
+  const rp = app.querySelector<HTMLElement>('#rep'); if (rp) rp.onclick = () => { const miss = buildFlow(a).find(check); miss ? ask(miss.id) : report(); };
   const bk = app.querySelector<HTMLElement>('#back'); if (bk) bk.onclick = () => ask(f[i - 1].id);
   scrollTo(0, 0);
 }
@@ -101,7 +102,12 @@ function report() {
   <div class="row noprint" style="margin-top:24px"><button class="btn ghost" id="edit">Change answers</button><button class="btn ghost" id="new">Start over</button></div>`;
   const on = (id: string, f: () => void) => app.querySelector<HTMLElement>('#' + id)!.onclick = f, msg = (t: string) => app.querySelector('#msg')!.textContent = t;
   const dl = (name: string, body: string, type: string) => { const l = document.createElement('a'); l.href = URL.createObjectURL(new Blob([body], { type })); l.download = name; l.click(); setTimeout(() => URL.revokeObjectURL(l.href), 2000); };
-  on('copy', async () => { try { await navigator.clipboard.writeText(md); msg('Copied. Paste it into ChatGPT, Claude or Gemini.'); } catch { msg('Copy was blocked. Use Download .md instead.'); } });
+  on('copy', async () => { try { await navigator.clipboard.writeText(md); msg('Copied. Paste it into ChatGPT, Claude or Gemini.'); } catch {
+    let t = app.querySelector<HTMLTextAreaElement>('#raw');
+    if (!t) { t = document.createElement('textarea'); t.id = 'raw'; t.className = 'noprint'; t.readOnly = true; t.setAttribute('aria-label', 'Report text'); t.value = md; app.querySelector('#msg')!.after(t); }
+    t.focus(); t.select();
+    msg(document.execCommand('copy') ? 'Copied. Paste it into ChatGPT, Claude or Gemini.' : 'Your browser blocked copying. The text is selected below; copy it from there.');
+  } });
   on('md', () => dl('career-report.md', md, 'text/markdown'));
   on('json', () => dl('career-report.json', JSON.stringify({ date: new Date().toISOString(), answers: a, stats: r.axes, interests: r.interest, personality: r.big, values: r.val, reliability: r.quality, careers: r.matches.map(m => ({ name: m.career.n, fit: m.score, ...m.parts, outlook: m.career.out, why: m.why, warnings: m.warn })) }, null, 2), 'application/json'));
   on('pdf', () => print()); on('edit', () => ask('name')); on('new', reset);
